@@ -8,7 +8,9 @@ Pinouts for the custom ESP8266 board and other information was taken from fvollm
 ## Hardware
 The most difficult aspect of this project was soldering the connections onto the microprocessor to flash the new firmware.
 TO open the lamp you need to peel back the rubber standoffs and remove three screws (indicated in orange below):
+
 <img src="/docs/screws.png" width="70%" style="display: block; margin-left: auto; margin-right: auto;">
+
 After opening the case you will find two PCBs. We are interested in the larger one, which holds the rotary encoder and the microprocessor.
 First you need to pull of the knob from the rotary encoder. This requires quite a bit of force. I wrapped the knob in tape and pulled it off using pliers.
 After you have removed the knob you can remove the three screws holding the PCB in place. 
