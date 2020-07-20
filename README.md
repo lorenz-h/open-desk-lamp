@@ -1,4 +1,7 @@
 # Open Desk Lamp
+
+<img src="/docs/lamp.jpg" width="70%" style="display: block; margin-left: auto; margin-right: auto;">
+
 The Xiaomi Desklamp is an affordable connected Lamp that uses an ESP8266 Microcontroller internally. 
 Unfortunately, users are required to register for the Xiaomi Home Service and the lamp communicates with Xiaomi servers. 
 This project replaces the lamp's original firmware with privacy focussed firmware based on [Micropython](https://micropython.org/).
