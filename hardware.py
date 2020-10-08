@@ -76,14 +76,14 @@ class CappedValue:
 
 class LampHardware:
 
-    max_duty_cycle = 400
+    max_duty_cycle = 200
 
     def __init__(self):
         self.pwm1 = machine.PWM(machine.Pin(4), freq=1000, duty=0)
         self.pwm2 = machine.PWM(machine.Pin(5), freq=1000, duty=0)
         self.rotary_encoder = RotaryEncoder(12, 13, 2)
 
-        self.brightness = CappedValue(0.0, 0.0, 1.0)
+        self.brightness = CappedValue(0.7, 0.0, 1.0)
         self.color = CappedValue(0.5, 0.0, 1.0)
         self.on = False
 

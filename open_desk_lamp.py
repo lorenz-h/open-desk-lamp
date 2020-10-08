@@ -2,18 +2,20 @@ import socket
 import uselect
 import ujson
 import machine
+import network
 import utime as time
 
 from hardware import LampHardware
+from networking import setup_network
 
 
 class OpenDeskLamp:
 
-    headers = b"Connection: close\r\n"
+    headers = b"Connection: Keep-Alive\r\nKeep-Alive: timeout=5, max=1000\r\n"
 
     def __init__(self):
         addr = socket.getaddrinfo('0.0.0.0', 80)[0][-1]
-
+        self.name = "OpenDeskLamp"
         self.hardware = LampHardware()
 
         self.sock = socket.socket()
@@ -25,17 +27,22 @@ class OpenDeskLamp:
 
     @staticmethod
     def parse_method(sock):
-        method, target, *_ = sock.readline().decode("utf-8").replace('\n', ' ').replace('\r', '').split(" ")
+        try:
+            method, target, *_ = sock.readline().decode("utf-8").replace('\n', ' ').replace('\r', '').split(" ")
 
-        content_length = None
+            content_length = None
 
-        while True:
-            header = sock.readline().decode("utf-8")
-            if header == "" or header == "\r\n":
-                break
-            if "Content-Length:" in header:
-                ll = header.replace(" ", "").replace("Content-Length:", "").strip()
-                return method, target, int(ll)
+            while True:
+                header = sock.readline().decode("utf-8")
+                if header == "" or header == "\r\n":
+                    break
+                if "Content-Length:" in header:
+                    ll = header.replace(" ", "").replace("Content-Length:", "").strip()
+                    return method, target, int(ll)
+        except:
+            print("Could not parse request")
+            method = None
+            target = None
 
         return method, target, None
 
@@ -57,7 +64,7 @@ class OpenDeskLamp:
                     if method in supported_methods:
                         callback = supported_methods[method]
                         print("Handling", method, "for endpoint", target)
-                        if method == "POST":
+                        if method == "POST" or method == "PUT":
                             while True:
                                 header = s.readline().decode("utf-8")
                                 if header == "" or header == "\r\n":
@@ -78,6 +85,28 @@ class OpenDeskLamp:
             html = fp.read()
         sock.send(b'HTTP/1.0 200 OK\r\n' + self.headers + b'Content-type: text/html\r\n\r\n')
         sock.send(html.encode("utf-8"))
+
+    def serve_config(self, sock):
+        sock.send(b'HTTP/1.0 200 OK\r\n' + self.headers + b'Content-type: text/json\r\n\r\n')
+        sta_if = network.WLAN(network.STA_IF)
+        addr, submask, gw, _ = sta_if.ifconfig()
+        sock.send(ujson.dumps({
+            "name": self.name,
+            "scene": 0,
+            "startup": False,
+            "cw": 4,
+            "ww": 5,
+            "hw": False,
+            "on": 1,
+            "off": 3,
+            "hwswitch": True,
+            "dhcp": True,
+            "addr": addr,
+            "gw": gw,
+            "sm": submask,
+            "bri": int(self.hardware.brightness() * 255),
+            "ct": 153 + ((1 - self.hardware.color()) * (500 - 153))
+        }))
 
     def serve_index(self, sock):
         with open("/www/index.html", "r") as fp:
@@ -122,12 +151,46 @@ class OpenDeskLamp:
             print("could not parse query:", exc)
         return params
 
-    def serve_status(self, sock):
+    def serve_detect(self, sock):
+        sock.send(b'HTTP/1.0 200 OK\r\n' + self.headers + b'Content-type: text/json\r\n\r\n')
+        sock.send(ujson.dumps({
+            "name": self.name,
+            "protocol": "native_single",
+            "modelid": "LTW001",
+            "type": "cct",
+            "mac": "A0:20:A6:2C:FB:26",
+            "version": 2.0
+        }))
+
+    def set_state(self, sock, content):
+        data = ujson.loads(content)
+        print("state update requested", data)
+        on = data.get("on", None)
+        if on is not None:
+            if on and self.hardware.brightness() < 0.1:
+                self.hardware.brightness.update(0.5)
+            self.hardware.on = on
+
+        ct = data.get("ct", None)
+        if ct is not None:
+            color = (ct - 153) / (500-153)
+            self.hardware.color.update(1 - color)
+
+        alert = data.get("alert", None)
+        if alert == "select":
+            self.hardware.pulse(duration=1, n=1)
+
+        bri = data.get("bri", None)
+        if bri is not None:
+            self.hardware.brightness.update(bri / 255)
+        self.serve_state(sock)
+
+    def serve_state(self, sock):
         sock.send(b'HTTP/1.0 200 OK\r\n' + self.headers + b'Content-type: text/json\r\n\r\n')
         sock.send(ujson.dumps({
             "on": self.hardware.on,
-            "brightness": self.hardware.brightness(),
-            "color": self.hardware.color()
+            "bri": int(self.hardware.brightness()*255),
+            "ct":  153 + ((1-self.hardware.color()) * (500-153))
         }))
 
     def serve_style(self, sock):
@@ -141,9 +204,13 @@ class OpenDeskLamp:
             with self.hardware:
                 self.hardware.pulse(duration=0.5, n=3)
                 while True:
-                    for i in range(10):
-                        self.hardware.update()
-                    self.serve()
+                    sta_if = network.WLAN(network.STA_IF)
+                    if not sta_if.isconnected():
+                        setup_network(attempts=10)
+                    for j in range(100):
+                        for i in range(10):
+                            self.hardware.update()
+                        self.serve()
         finally:
             self.sock.close()
 
